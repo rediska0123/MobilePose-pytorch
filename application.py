@@ -148,7 +148,7 @@ class AppWindow(QWidget):
         self.model = load_model()
 
     def load_train_clicked(self):
-        fname = QFileDialog.getOpenFileName(self, 'Load mp4 file', '~/', 'mp4')
+        fname = QFileDialog.getOpenFileName(self, 'Load mp4 file', '~/', '*.mp4')
         if fname[0] == '':
             return
         self.train_path = fname[0]
@@ -156,7 +156,7 @@ class AppWindow(QWidget):
         self.train_path_label.setText(self.train_path)
 
     def load_test_clicked(self):
-        fname = QFileDialog.getOpenFileName(self, 'Load mp4 file', '~/', 'mp4')
+        fname = QFileDialog.getOpenFileName(self, 'Load mp4 file', '~/', '*.mp4')
         if fname[0] == '':
             return
         self.test_path = fname[0]
