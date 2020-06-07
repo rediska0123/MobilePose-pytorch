@@ -1,13 +1,12 @@
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
-*.t7
 *.jpg
 *.txt
 !requirements.txt
 *.pyc
 results
 __pycache__
-others
+othrs
 .vscode
 .idea
 pretrained
