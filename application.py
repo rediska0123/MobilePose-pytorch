@@ -169,12 +169,10 @@ class AppWindow(QWidget):
     def start_clicked(self):
         if self.train_path is None or self.test_path is None:
             return
-        if self.video_player is not None:
-            self.layout.removeWidget(self.video_player)
+        self.grade_label.setText('Processing...')
         self.load_train_button.setEnabled(False)
         self.load_test_button.setEnabled(False)
         self.start_button.setEnabled(False)
-        self.grade_label.setText('Processing...')
         pr = VideoProcesser(make_video, args=(self.train_path, self.test_path, self.out_path, self.model, self.tmp_dir))
         pr.signals.result.connect(self.process_result)
         self.pool.start(pr)
