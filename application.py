@@ -3,9 +3,10 @@ from PyQt5.QtWidgets import QPushButton, QApplication, QWidget, QVBoxLayout, QSl
 from PyQt5.QtCore import QUrl, Qt, QRunnable, pyqtSignal, QObject, QThreadPool
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtMultimediaWidgets import QVideoWidget
-from process_videos import load_model, make_video
+import process_videos
 import os
 import time
+import uuid
 
 
 def position_to_time(pos):
@@ -145,10 +146,12 @@ class AppWindow(QWidget):
         self.layout.addWidget(self.grade_label)
         self.setLayout(self.layout)
 
-        self.model = load_model()
+        self.model = process_videos.load_model()
+
+        self.video_formats = 'Video Files (*.mp4 *.flv *.ts *.mts *.avi *.mov)'
 
     def load_train_clicked(self):
-        fname = QFileDialog.getOpenFileName(self, 'Load mp4 file', '~/', '*.mp4')
+        fname = QFileDialog.getOpenFileName(self, 'Load video file', '~/', self.video_formats)
         if fname[0] == '':
             return
         self.train_path = fname[0]
@@ -156,7 +159,7 @@ class AppWindow(QWidget):
         self.train_path_label.setText(self.train_path)
 
     def load_test_clicked(self):
-        fname = QFileDialog.getOpenFileName(self, 'Load mp4 file', '~/', '*.mp4')
+        fname = QFileDialog.getOpenFileName(self, 'Load video file', '~/', self.video_formats)
         if fname[0] == '':
             return
         self.test_path = fname[0]
@@ -172,7 +175,7 @@ class AppWindow(QWidget):
         self.load_test_button.setEnabled(False)
         self.start_button.setEnabled(False)
         self.grade_label.setText('Processing...')
-        pr = VideoProcesser(make_video, args=(self.train_path, self.test_path, self.out_path, self.model))
+        pr = VideoProcesser(make_video, args=(self.train_path, self.test_path, self.out_path, self.model, self.tmp_dir))
         pr.signals.result.connect(self.process_result)
         self.pool.start(pr)
 
@@ -187,6 +190,14 @@ class AppWindow(QWidget):
             self.layout.addWidget(self.video_player)
         else:
             self.video_player.reset(self.out_path)
+
+
+def make_video(train_path, test_path, out_path, model, tmp_dir):
+    converted_train_path = tmp_dir + '/' + str(uuid.uuid4()) + '.mp4'
+    converted_test_path = tmp_dir + '/' + str(uuid.uuid4()) + '.mp4'
+    process_videos.convert_video(train_path, converted_train_path)
+    process_videos.convert_video(test_path, converted_test_path)
+    return process_videos.make_video(converted_train_path, converted_test_path, out_path, model)
 
 
 if __name__ == '__main__':

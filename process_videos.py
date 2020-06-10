@@ -5,6 +5,7 @@ from estimator import ResEstimator
 from network import CoordRegressionNetwork
 from dataloader import crop_camera
 import moviepy.editor as mpe
+import ffmpy
 
 
 def load_model(model='resnet18', inp_dim=224):
@@ -183,6 +184,12 @@ def make_video(path1, path2, out_path, res_estimator):
     if len(errors) != 0:
         total = round(np.mean(errors).item())
         return print_grade(total)
+
+
+def convert_video(video_path, out_path):
+    flags = '-r 24 -codec copy'
+    ff = ffmpy.FFmpeg(inputs={video_path: None}, outputs={out_path: flags})
+    ff.run()
 
 
 if __name__ == '__main__':

@@ -11,3 +11,5 @@ othrs
 .idea
 pretrained
 *.pth
+DanceApp
+examples
