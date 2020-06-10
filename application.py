@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import QPushButton, QApplication, QWidget, QVBoxLayout, QSlider, QStyle, \
-    QHBoxLayout, QFileDialog, QLabel
+    QHBoxLayout, QFileDialog, QLabel, QProgressBar
 from PyQt5.QtCore import QUrl, Qt, QRunnable, pyqtSignal, QObject, QThreadPool
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtMultimediaWidgets import QVideoWidget
@@ -80,7 +80,7 @@ class VideoPlayer(QWidget):
         self.time_elapsed_label.setText(position_to_time(position))
 
 
-class WorkerSignals(QObject):
+class VideoProcesserSignals(QObject):
     result = pyqtSignal(tuple)
 
 
@@ -89,7 +89,7 @@ class VideoProcesser(QRunnable):
         super().__init__()
         self.fn = fn
         self.args = args
-        self.signals = WorkerSignals()
+        self.signals = VideoProcesserSignals()
 
     def run(self):
         res = self.fn(*self.args)
@@ -101,8 +101,6 @@ class AppWindow(QWidget):
         super().__init__()
 
         self.setGeometry(250, 100, 800, 600)
-
-        self.layout = QVBoxLayout()
 
         self.train_path_label = QLabel()
         self.train_path_label.setStyleSheet("border: 1px solid black;")
@@ -135,15 +133,20 @@ class AppWindow(QWidget):
         train_layout = QHBoxLayout()
         train_layout.addWidget(self.train_path_label)
         train_layout.addWidget(self.load_train_button)
-        self.layout.addLayout(train_layout)
 
         test_layout = QHBoxLayout()
         test_layout.addWidget(self.test_path_label)
         test_layout.addWidget(self.load_test_button)
-        self.layout.addLayout(test_layout)
 
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setHidden(True)
+
+        self.layout = QVBoxLayout()
+        self.layout.addLayout(train_layout)
+        self.layout.addLayout(test_layout)
         self.layout.addWidget(self.start_button)
         self.layout.addWidget(self.grade_label)
+        self.layout.addWidget(self.progress_bar)
         self.setLayout(self.layout)
 
         self.model = process_videos.load_model()
@@ -170,15 +173,18 @@ class AppWindow(QWidget):
         if self.train_path is None or self.test_path is None:
             return
         self.grade_label.setText('Processing...')
+        self.progress_bar.setHidden(False)
         self.load_train_button.setEnabled(False)
         self.load_test_button.setEnabled(False)
         self.start_button.setEnabled(False)
-        pr = VideoProcesser(make_video, args=(self.train_path, self.test_path, self.out_path, self.model, self.tmp_dir))
+        pr = VideoProcesser(make_video, args=(self.train_path, self.test_path, self.out_path, self.model, self.tmp_dir,
+                                              self.progress_bar.setValue))
         pr.signals.result.connect(self.process_result)
         self.pool.start(pr)
 
     def process_result(self, res):
         total_err, grade = res
+        self.progress_bar.setHidden(True)
         self.grade_label.setText('Total error: {}, Grade: {}'.format(total_err, grade))
         self.load_train_button.setEnabled(True)
         self.load_test_button.setEnabled(True)
@@ -190,12 +196,12 @@ class AppWindow(QWidget):
             self.video_player.reset(self.out_path)
 
 
-def make_video(train_path, test_path, out_path, model, tmp_dir):
+def make_video(train_path, test_path, out_path, model, tmp_dir, processing_log):
     converted_train_path = tmp_dir + '/' + str(uuid.uuid4()) + '.mp4'
     converted_test_path = tmp_dir + '/' + str(uuid.uuid4()) + '.mp4'
     process_videos.convert_video(train_path, converted_train_path)
     process_videos.convert_video(test_path, converted_test_path)
-    return process_videos.make_video(converted_train_path, converted_test_path, out_path, model)
+    return process_videos.make_video(converted_train_path, converted_test_path, out_path, model, processing_log)
 
 
 if __name__ == '__main__':

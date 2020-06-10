@@ -83,7 +83,7 @@ def print_grade(total_err):
             return total_err, grade
 
 
-def modify_two_videos(path1, path2, frame_modifier, out_path=None):
+def modify_two_videos(path1, path2, frame_modifier, out_path=None, logger=None):
     cap1 = open_video(path1)
     cap2 = open_video(path2)
     fps = cap1.get(cv2.CAP_PROP_FPS)
@@ -96,6 +96,8 @@ def modify_two_videos(path1, path2, frame_modifier, out_path=None):
     i = 0
     while cap1.isOpened() and cap2.isOpened():
         print('\rFrame {}/{}'.format(i, frames), end='')
+        if logger is not None:
+            logger.log(i, frames)
         i += 1
         ret1, frame1 = cap1.read()
         ret2, frame2 = cap2.read()
@@ -117,9 +119,10 @@ def modify_two_videos(path1, path2, frame_modifier, out_path=None):
     print()
 
 
-def smooth_poses(poses):
+def smooth_poses(poses, logger=None):
     cnt = 0
-    for i in range(1, len(poses) - 1):
+    l = len(poses) - 1
+    for i in range(1, l):
         prv, cur, nxt = tuple(poses[i - 1:i + 2])
         e1 = count_pos_error(prv, cur)
         e2 = count_pos_error(cur, nxt)
@@ -127,11 +130,25 @@ def smooth_poses(poses):
         if e1 + e2 > 1.5 * e3:
             cnt += 1
             poses[i] = (prv + nxt) // 2
+        if logger is not None:
+            logger.log(i, l)
     print('Smoothed {} out of {} frames'.format(cnt, len(poses)))
     return poses
 
 
-def make_video(path1, path2, out_path, res_estimator):
+class Logger:
+    def __init__(self, callback, l_threshold, r_threshold):
+        self.callback = callback
+        self.l_threshold = l_threshold
+        self.r_threshold = r_threshold
+
+    def log(self, x, y):
+        """x out of y done"""
+        if self.callback is not None:
+            self.callback((self.l_threshold * (y - x) + self.r_threshold * x) / y)
+
+
+def make_video(path1, path2, out_path, res_estimator, processing_log=None):
     poses1, poses2 = [], []
 
     def get_human_pose(frame):
@@ -143,11 +160,11 @@ def make_video(path1, path2, out_path, res_estimator):
         poses2.append(get_human_pose(frame2))
 
     print('Calculating positions...')
-    modify_two_videos(path1, path2, collect_human_poses)
+    modify_two_videos(path1, path2, collect_human_poses, None, Logger(processing_log, 0, 60))
 
     print('Smoothing...')
-    poses1 = smooth_poses(poses1)
-    poses2 = smooth_poses(poses2)
+    poses1 = smooth_poses(poses1, Logger(processing_log, 60, 70))
+    poses2 = smooth_poses(poses2, Logger(processing_log, 70, 80))
 
     frame_number = 0
     errors = []
@@ -172,7 +189,7 @@ def make_video(path1, path2, out_path, res_estimator):
         return add_error_on_frame(frame, err)
 
     print('Assembling the final video...')
-    modify_two_videos(path1, path2, assemble_final_video, tmp_path)
+    modify_two_videos(path1, path2, assemble_final_video, tmp_path, Logger(processing_log, 80, 100))
 
     # set audio
     output_video = mpe.VideoFileClip(tmp_path)
