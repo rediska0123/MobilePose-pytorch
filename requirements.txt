@@ -18,3 +18,4 @@ opencv-python~=4.2.0.34
 moviepy~=1.0.3
 Shapely~=1.7.0
 PyQt5~=5.15.0
+ffmpy
