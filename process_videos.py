@@ -6,6 +6,7 @@ from network import CoordRegressionNetwork
 from dataloader import crop_camera
 import moviepy.editor as mpe
 import ffmpy
+from numpy.fft import fft, ifft
 
 
 def load_model(model='resnet18', inp_dim=224):
@@ -83,14 +84,16 @@ def print_grade(total_err):
             return total_err, grade
 
 
-def modify_two_videos(path1, path2, frame_modifier, out_path=None, logger=None):
+def modify_two_videos(path1, path2, shift, frame_modifier, out_path=None, logger=None):
     cap1 = open_video(path1)
     cap2 = open_video(path2)
     fps = cap1.get(cv2.CAP_PROP_FPS)
     cap2.set(cv2.CAP_PROP_FPS, fps)
+    shift = round(cap1.get(cv2.CAP_PROP_FRAME_COUNT) * shift)
     frames = round(min(
-        cap1.get(cv2.CAP_PROP_FRAME_COUNT),
-        cap2.get(cv2.CAP_PROP_FRAME_COUNT)))
+        cap1.get(cv2.CAP_PROP_FRAME_COUNT) - max(0, shift),
+        cap2.get(cv2.CAP_PROP_FRAME_COUNT) + min(0, shift)
+    )) + shift
     out = None
 
     i = 0
@@ -99,6 +102,14 @@ def modify_two_videos(path1, path2, frame_modifier, out_path=None, logger=None):
         if logger is not None:
             logger.log(i, frames)
         i += 1
+        if shift >= 1:
+            cap1.read()
+            shift -= 1
+            continue
+        if shift <= -1:
+            cap2.read()
+            shift += 1
+            continue
         ret1, frame1 = cap1.read()
         ret2, frame2 = cap2.read()
         if not ret1 or not ret2:
@@ -149,6 +160,8 @@ class Logger:
 
 
 def make_video(path1, path2, out_path, res_estimator, processing_log=None):
+    shift = calculate_shift(path1, path2)
+    print('Shift: {}%'.format(shift * 100))
     poses1, poses2 = [], []
 
     def get_human_pose(frame):
@@ -160,7 +173,7 @@ def make_video(path1, path2, out_path, res_estimator, processing_log=None):
         poses2.append(get_human_pose(frame2))
 
     print('Calculating positions...')
-    modify_two_videos(path1, path2, collect_human_poses, None, Logger(processing_log, 0, 60))
+    modify_two_videos(path1, path2, shift, collect_human_poses, None, Logger(processing_log, 0, 60))
 
     print('Smoothing...')
     poses1 = smooth_poses(poses1, Logger(processing_log, 60, 70))
@@ -189,11 +202,15 @@ def make_video(path1, path2, out_path, res_estimator, processing_log=None):
         return add_error_on_frame(frame, err)
 
     print('Assembling the final video...')
-    modify_two_videos(path1, path2, assemble_final_video, tmp_path, Logger(processing_log, 80, 100))
+    modify_two_videos(path1, path2, shift, assemble_final_video, tmp_path, Logger(processing_log, 80, 100))
 
     # set audio
     output_video = mpe.VideoFileClip(tmp_path)
-    audio_background = mpe.VideoFileClip(path1).audio.subclip(t_end=output_video.duration)
+    dur = mpe.VideoFileClip(path1).duration
+    audio_background = mpe.VideoFileClip(path1).audio.subclip(
+        t_start=shift * dur,
+        t_end=shift * dur + output_video.duration
+    )
     final_video = output_video.set_audio(audio_background)
     final_video.write_videofile(out_path)
     os.remove(tmp_path)
@@ -207,6 +224,54 @@ def convert_video(video_path, out_path):
     flags = '-r 24 -codec copy'
     ff = ffmpy.FFmpeg(inputs={video_path: None}, outputs={out_path: flags})
     ff.run()
+
+
+def calculate_shift(path1, path2):
+    def polymult(a, b):
+        n, m = len(a), len(b)
+        a1 = np.pad(a, (0, m), 'constant')
+        b1 = np.pad(b, (0, n), 'constant')
+        a_f, b_f = fft(a1), fft(b1)
+        c_f = a_f * b_f
+        return np.rint(np.real(ifft(c_f)[:n + m - 1])).astype('int64')
+
+    def get_shift_errors(arr1, arr2):
+        def get_sq_array(a, m):
+            sq = np.concatenate((
+                np.repeat(0, m),
+                a,
+                np.repeat(0, m - 1)
+            )) ** 2
+            s = np.cumsum(sq)
+            return s[m:] - s[:len(s) - m]
+
+        n, m = len(arr1), len(arr2)
+        sq1 = get_sq_array(arr1[::-1], m)
+        sq2 = get_sq_array(arr2, n)
+        diff = sq1 + sq2 - 2 * polymult(arr1[::-1], arr2)
+        elements_count = np.concatenate((
+            np.arange(1, min(n, m) + 1),
+            np.repeat(min(n, m), max(n, m) - min(n, m)),
+            np.arange(min(n, m) - 1, 0, -1)
+        ))
+        return diff / elements_count
+
+    audio1 = mpe.VideoFileClip(path1).audio
+    audio2 = mpe.VideoFileClip(path2).audio
+    if audio1 is None or audio2 is None:
+        return 0
+    audio1 = audio1.to_soundarray()[::10, 0]
+    audio2 = audio2.to_soundarray()[::10, 0]
+    k1, k2 = audio1.mean(), audio2.mean()
+    audio1 *= k2
+    audio2 *= k1
+    fft1, fft2 = fft(audio1), fft(audio2)
+
+    diff = get_shift_errors(fft1, fft2)
+    l = len(diff)
+    a, b = l // 5, (4 * l + 3) // 5
+    shift = len(fft1) - 1 - (np.argmin(diff[a:b]) + a)
+    return shift / len(fft1)
 
 
 if __name__ == '__main__':
