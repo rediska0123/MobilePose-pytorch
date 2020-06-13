@@ -93,7 +93,7 @@ def modify_two_videos(path1, path2, shift, frame_modifier, out_path=None, logger
     frames = round(min(
         cap1.get(cv2.CAP_PROP_FRAME_COUNT) - max(0, shift),
         cap2.get(cv2.CAP_PROP_FRAME_COUNT) + min(0, shift)
-    )) + shift
+    )) + abs(shift)
     out = None
 
     i = 0
@@ -208,8 +208,8 @@ def make_video(path1, path2, out_path, res_estimator, processing_log=None):
     output_video = mpe.VideoFileClip(tmp_path)
     dur = mpe.VideoFileClip(path1).duration
     audio_background = mpe.VideoFileClip(path1).audio.subclip(
-        t_start=shift * dur,
-        t_end=shift * dur + output_video.duration
+        t_start=max(0, shift * dur),
+        t_end=max(0, shift * dur) + output_video.duration
     )
     final_video = output_video.set_audio(audio_background)
     final_video.write_videofile(out_path)
