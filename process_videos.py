@@ -7,6 +7,7 @@ from dataloader import crop_camera
 import moviepy.editor as mpe
 import ffmpy
 from numpy.fft import fft, ifft
+from scipy.signal import spectrogram
 
 
 def load_model(model='resnet18', inp_dim=224):
@@ -260,18 +261,21 @@ def calculate_shift(path1, path2):
     audio2 = mpe.VideoFileClip(path2).audio
     if audio1 is None or audio2 is None:
         return 0
-    audio1 = audio1.to_soundarray()[::10, 0]
-    audio2 = audio2.to_soundarray()[::10, 0]
-    k1, k2 = audio1.mean(), audio2.mean()
+    audio1 = audio1.to_soundarray()[::, 0]
+    audio2 = audio2.to_soundarray()[::, 0]
+    k1, k2 = np.mean(np.abs(audio1)), np.mean(np.abs(audio2))
     audio1 *= k2
     audio2 *= k1
-    fft1, fft2 = fft(audio1), fft(audio2)
+    sp1, sp2 = spectrogram(audio1), spectrogram(audio2)
 
-    diff = get_shift_errors(fft1, fft2)
-    l = len(diff)
+    l = sp1[-1].shape[1] + sp2[-1].shape[1] - 1
+    diff = np.zeros((l,))
+    for i in range(sp1[-1].shape[0]):
+        diff += np.absolute(get_shift_errors(sp1[-1][i], sp2[-1][i]))
     a, b = l // 5, (4 * l + 3) // 5
-    shift = len(fft1) - 1 - (np.argmin(diff[a:b]) + a)
-    return shift / len(fft1)
+    shift = len(audio1) - 1 - (np.argmin(diff[a:b]) + a) * (len(audio1) + len(audio2) - 1) / l
+
+    return shift / len(audio1)
 
 
 if __name__ == '__main__':
