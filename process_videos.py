@@ -140,6 +140,20 @@ class VideoPlayer:
         self.callback(img)
 
 
+def draw_arrows(frame, train_pose, my_pose):
+    train_normalized = normalize_pose(train_pose.copy())
+    my_normalized = normalize_pose(my_pose.copy())
+    for i in range(my_normalized.shape[0]):
+        d = my_normalized[i] - train_normalized[i]
+        dist = (d[0] ** 2).sum()
+        if dist > 0.0005:
+            frame = cv2.arrowedLine(frame,
+                                    tuple(my_pose[i]),
+                                    tuple(train_pose[i]),
+                                    color=[0, 255, 0], thickness=3)
+    return frame
+
+
 def make_video(path1, out_path, res_estimator, processing_log=None, video_player=None):
     prv1, cur1 = None, None
     prv2, cur2 = None, None
@@ -172,6 +186,7 @@ def make_video(path1, out_path, res_estimator, processing_log=None, video_player
         if prv_frame1 is not None:
             ResEstimator.draw_humans(prv_frame1, cur1, imgcopy=False)
             ResEstimator.draw_humans(prv_frame2, cur2, imgcopy=False)
+            prv_frame2 = draw_arrows(prv_frame2, cur1.copy(), cur2.copy())
             frame = concat_images(prv_frame1, prv_frame2)
         else:
             frame = concat_images(frame1, frame2)
