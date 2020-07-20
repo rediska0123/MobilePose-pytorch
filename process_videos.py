@@ -17,7 +17,7 @@ def load_model(model='resnet18', inp_dim=224):
 def open_video(path):
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
-        raise ('Error opening video {}'.format(path))
+        raise Exception('Error opening video {}'.format(path))
     return cap
 
 
@@ -83,15 +83,13 @@ def print_grade(total_err):
             return total_err, grade
 
 
-def modify_two_videos(path1, path2, frame_modifier, out_path=None, logger=None):
-    cap1 = open_video(path1)
-    cap2 = open_video(path2)
-    fps = cap1.get(cv2.CAP_PROP_FPS)
+def modify_two_videos(cap1, cap2, frame_modifier, out=None, logger=None):
+    fps = round(cap1.get(cv2.CAP_PROP_FPS))
+    cap1.set(cv2.CAP_PROP_FPS, fps)
     cap2.set(cv2.CAP_PROP_FPS, fps)
     frames = round(min(
         cap1.get(cv2.CAP_PROP_FRAME_COUNT),
         cap2.get(cv2.CAP_PROP_FRAME_COUNT)))
-    out = None
 
     i = 0
     while cap1.isOpened() and cap2.isOpened():
@@ -105,10 +103,6 @@ def modify_two_videos(path1, path2, frame_modifier, out_path=None, logger=None):
             break
         frame = frame_modifier(frame1, frame2)
 
-        if out is None and out_path is not None:
-            h, w = frame.shape[: 2]
-            fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
-            out = cv2.VideoWriter(out_path, fourcc, fps, (w, h))
         if out is not None:
             out.write(frame)
 
@@ -116,24 +110,16 @@ def modify_two_videos(path1, path2, frame_modifier, out_path=None, logger=None):
     cap2.release()
     if out is not None:
         out.release()
-    print()
 
 
-def smooth_poses(poses, logger=None):
-    cnt = 0
-    l = len(poses) - 1
-    for i in range(1, l):
-        prv, cur, nxt = tuple(poses[i - 1:i + 2])
-        e1 = count_pos_error(prv, cur)
-        e2 = count_pos_error(cur, nxt)
-        e3 = count_pos_error(prv, nxt)
-        if e1 + e2 > 1.5 * e3:
-            cnt += 1
-            poses[i] = (prv + nxt) // 2
-        if logger is not None:
-            logger.log(i, l)
-    print('Smoothed {} out of {} frames'.format(cnt, len(poses)))
-    return poses
+def smooth_poses(prv, cur, nxt):
+    e1 = count_pos_error(prv, cur)
+    e2 = count_pos_error(cur, nxt)
+    e3 = count_pos_error(prv, nxt)
+    res = cur
+    if e1 + e2 > 1.5 * e3:
+        res = (prv + nxt) // 2
+    return res
 
 
 class Logger:
@@ -149,47 +135,54 @@ class Logger:
 
 
 def make_video(path1, path2, out_path, res_estimator, processing_log=None):
-    poses1, poses2 = [], []
+    prv1, cur1 = None, None
+    prv2, cur2 = None, None
+    prv_frame1 = prv_frame2 = None
 
-    def get_human_pose(frame):
-        frame = crop_camera(frame)
-        return res_estimator.inference(frame)
+    cap1 = open_video(path1)
+    cap2 = open_video(path2)
+    fps = round(cap1.get(cv2.CAP_PROP_FPS))
 
-    def collect_human_poses(frame1, frame2):
-        poses1.append(get_human_pose(frame1))
-        poses2.append(get_human_pose(frame2))
-
-    print('Calculating positions...')
-    modify_two_videos(path1, path2, collect_human_poses, None, Logger(processing_log, 0, 60))
-
-    print('Smoothing...')
-    poses1 = smooth_poses(poses1, Logger(processing_log, 60, 70))
-    poses2 = smooth_poses(poses2, Logger(processing_log, 70, 80))
-
-    frame_number = 0
     errors = []
-    c = out_path.split('.')
-    tmp_path = '.'.join(c[:-1]) + '_tmp.' + c[-1]
+    h1, w1 = round(cap1.get(cv2.CAP_PROP_FRAME_HEIGHT)), round(cap1.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h2, w2 = round(cap2.get(cv2.CAP_PROP_FRAME_HEIGHT)), round(cap2.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h1, w1 = crop_camera(np.zeros((h1, w1, 3))).shape[: 2]
+    h2, w2 = crop_camera(np.zeros((h2, w2, 3))).shape[: 2]
+    h, w = concat_images(np.zeros((h1, w1, 3)), np.zeros((h2, w2, 3))).shape[: 2]
 
-    def assemble_final_video(frame1, frame2):
+    def frame_modifier(frame1, frame2):
+        nonlocal prv1, prv2, cur1, cur2, prv_frame1, prv_frame2, h, w
         frame1 = crop_camera(frame1)
         frame2 = crop_camera(frame2)
-
-        nonlocal frame_number
-        pos1, pos2 = poses1[frame_number], poses2[frame_number]
-        frame_number += 1
-
-        ResEstimator.draw_humans(frame1, pos1, imgcopy=False)
-        ResEstimator.draw_humans(frame2, pos2, imgcopy=False)
+        nxt1 = res_estimator.inference(frame1)
+        nxt2 = res_estimator.inference(frame2)
+        if prv1 is None:
+            prv1, prv2 = nxt1, nxt2
+        elif cur1 is None:
+            cur1, cur2 = nxt1, nxt2
+        else:
+            cur1 = smooth_poses(prv1, cur1, nxt1)
+            cur2 = smooth_poses(prv2, cur2, nxt2)
+        if prv_frame1 is not None:
+            ResEstimator.draw_humans(prv_frame1, cur1, imgcopy=False)
+            ResEstimator.draw_humans(prv_frame2, cur2, imgcopy=False)
         frame = concat_images(frame1, frame2)
 
-        err = count_pos_error(pos1, pos2)
-        errors.append(err)
+        prv_frame1 , prv_frame2 = frame1, frame2
+
+        err = 0
+        if cur1 is not None:
+            err = count_pos_error(cur1, cur2)
+            errors.append(err)
 
         return add_error_on_frame(frame, err)
 
-    print('Assembling the final video...')
-    modify_two_videos(path1, path2, assemble_final_video, tmp_path, Logger(processing_log, 80, 100))
+    fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
+    c = out_path.split('.')
+    tmp_path = '.'.join(c[:-1]) + '_tmp.' + c[-1]
+    out_cap = cv2.VideoWriter(tmp_path, fourcc, fps, (w, h))
+
+    modify_two_videos(cap1, cap2, frame_modifier, out_cap, Logger(processing_log, 0, 100))
 
     # set audio
     output_video = mpe.VideoFileClip(tmp_path)
@@ -210,9 +203,9 @@ def convert_video(video_path, out_path):
 
 
 if __name__ == '__main__':
-    path1 = 'examples/kek1.mp4'
-    path2 = 'examples/kek4.mp4'
-    out_path = 'examples/kek5.mp4'
+    path1 = '../../kek1.mp4'
+    path2 = '../../kek2.mp4'
+    out_path = '../../kek5.mp4'
 
     e = load_model()
 
