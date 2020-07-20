@@ -143,13 +143,15 @@ class VideoPlayer:
 def draw_arrows(frame, train_pose, my_pose):
     train_normalized = normalize_pose(train_pose.copy())
     my_normalized = normalize_pose(my_pose.copy())
+    train_center = train_pose.mean(axis=0)
+    my_center = my_pose.mean(axis=0)
     for i in range(my_normalized.shape[0]):
         d = my_normalized[i] - train_normalized[i]
         dist = (d[0] ** 2).sum()
         if dist > 0.0005:
-            frame = cv2.arrowedLine(frame,
-                                    tuple(my_pose[i]),
-                                    tuple(train_pose[i]),
+            x = tuple(np.rint(my_pose[i]).astype(int))
+            y = tuple(np.rint(train_pose[i] - train_center + my_center).astype(int))
+            frame = cv2.arrowedLine(frame, x, y,
                                     color=[0, 255, 0], thickness=3)
     return frame
 
