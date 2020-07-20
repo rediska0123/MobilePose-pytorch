@@ -139,7 +139,7 @@ def make_video(path1, out_path, res_estimator, processing_log=None):
 
     cap1 = open_video(path1)
     cap2 = cv2.VideoCapture(0)
-    fps = round(cap1.get(cv2.CAP_PROP_FPS))
+    fps = round(cap2.get(cv2.CAP_PROP_FPS))
 
     errors = []
     h1, w1 = round(cap1.get(cv2.CAP_PROP_FRAME_HEIGHT)), round(cap1.get(cv2.CAP_PROP_FRAME_WIDTH))
