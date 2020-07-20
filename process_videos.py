@@ -132,7 +132,15 @@ class Logger:
             self.callback((self.l_threshold * (y - x) + self.r_threshold * x) / y)
 
 
-def make_video(path1, out_path, res_estimator, processing_log=None):
+class VideoPlayer:
+    def __init__(self, callback):
+        self.callback = callback
+
+    def set_image(self, img):
+        self.callback(img)
+
+
+def make_video(path1, out_path, res_estimator, processing_log=None, video_player=None):
     prv1, cur1 = None, None
     prv2, cur2 = None, None
     prv_frame1, prv_frame2 = None, None
@@ -175,8 +183,11 @@ def make_video(path1, out_path, res_estimator, processing_log=None):
         if cur1 is not None:
             err = count_pos_error(cur1, cur2)
             errors.append(err)
+        frame = add_error_on_frame(frame, err)
+        if video_player is not None:
+            video_player.set_image(frame)
 
-        return add_error_on_frame(frame, err)
+        return frame
 
     fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
     c = out_path.split('.')
