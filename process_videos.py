@@ -137,7 +137,7 @@ class Logger:
 def make_video(path1, path2, out_path, res_estimator, processing_log=None):
     prv1, cur1 = None, None
     prv2, cur2 = None, None
-    prv_frame1 = prv_frame2 = None
+    prv_frame1, prv_frame2 = None, None
 
     cap1 = open_video(path1)
     cap2 = open_video(path2)
@@ -166,9 +166,12 @@ def make_video(path1, path2, out_path, res_estimator, processing_log=None):
         if prv_frame1 is not None:
             ResEstimator.draw_humans(prv_frame1, cur1, imgcopy=False)
             ResEstimator.draw_humans(prv_frame2, cur2, imgcopy=False)
-        frame = concat_images(frame1, frame2)
+            frame = concat_images(prv_frame1, prv_frame2)
+        else:
+            frame = concat_images(frame1, frame2)
 
-        prv_frame1 , prv_frame2 = frame1, frame2
+        prv_frame1, prv_frame2 = frame1, frame2
+        prv1, prv2, cur1, cur2 = cur1, cur2, nxt1, nxt2
 
         err = 0
         if cur1 is not None:
