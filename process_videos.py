@@ -194,12 +194,17 @@ def make_video(path1, out_path, res_estimator, processing_log=None, video_player
     tmp_path = '.'.join(c[:-1]) + '_tmp.' + c[-1]
     out_cap = cv2.VideoWriter(tmp_path, fourcc, fps, (w, h))
 
+    print(tmp_path)
     modify_two_videos(cap1, cap2, frame_modifier, out_cap, Logger(processing_log, 0, 100))
 
     # set audio
     output_video = mpe.VideoFileClip(tmp_path)
-    audio_background = mpe.VideoFileClip(path1).audio.subclip(t_end=output_video.duration)
-    final_video = output_video.set_audio(audio_background)
+    audio = mpe.VideoFileClip(path1).audio
+    if audio is not None:
+        audio_background = audio.subclip(t_end=output_video.duration)
+        final_video = output_video.set_audio(audio_background)
+    else:
+        final_video = output_video
     final_video.write_videofile(out_path)
     os.remove(tmp_path)
 
