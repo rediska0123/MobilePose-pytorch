@@ -87,9 +87,7 @@ def modify_two_videos(cap1, cap2, frame_modifier, out=None, logger=None):
     fps = round(cap1.get(cv2.CAP_PROP_FPS))
     cap1.set(cv2.CAP_PROP_FPS, fps)
     cap2.set(cv2.CAP_PROP_FPS, fps)
-    frames = round(min(
-        cap1.get(cv2.CAP_PROP_FRAME_COUNT),
-        cap2.get(cv2.CAP_PROP_FRAME_COUNT)))
+    frames = round(cap1.get(cv2.CAP_PROP_FRAME_COUNT))
 
     i = 0
     while cap1.isOpened() and cap2.isOpened():
@@ -134,13 +132,13 @@ class Logger:
             self.callback((self.l_threshold * (y - x) + self.r_threshold * x) / y)
 
 
-def make_video(path1, path2, out_path, res_estimator, processing_log=None):
+def make_video(path1, out_path, res_estimator, processing_log=None):
     prv1, cur1 = None, None
     prv2, cur2 = None, None
     prv_frame1 = prv_frame2 = None
 
     cap1 = open_video(path1)
-    cap2 = open_video(path2)
+    cap2 = cv2.VideoCapture(0)
     fps = round(cap1.get(cv2.CAP_PROP_FPS))
 
     errors = []
@@ -166,7 +164,7 @@ def make_video(path1, path2, out_path, res_estimator, processing_log=None):
         if prv_frame1 is not None:
             ResEstimator.draw_humans(prv_frame1, cur1, imgcopy=False)
             ResEstimator.draw_humans(prv_frame2, cur2, imgcopy=False)
-        frame = concat_images(frame1, frame2)
+            frame = concat_images(prv_frame1, prv_frame2)
 
         prv_frame1 , prv_frame2 = frame1, frame2
 
@@ -204,9 +202,8 @@ def convert_video(video_path, out_path):
 
 if __name__ == '__main__':
     path1 = '../../kek1.mp4'
-    path2 = '../../kek2.mp4'
     out_path = '../../kek5.mp4'
 
     e = load_model()
 
-    make_video(path1, path2, out_path, e)
+    make_video(path1, out_path, e)
